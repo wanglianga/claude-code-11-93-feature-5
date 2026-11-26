@@ -1,60 +1,41 @@
-// 应用外壳：登录会话 + 顶栏（模拟时钟）+ 角色视图
-import React, { useEffect, useState } from 'react';
-import type { Account } from './types';
-import { fmtMin } from './types';
-import { useWorld } from './state/WorldContext';
-import { advanceClock } from './lib/actions';
-import { Login } from './components/Login';
-import { DispatcherView } from './components/DispatcherView';
-import { DriverView } from './components/DriverView';
-import { CsView } from './components/CsView';
+// 应用入口：默认进入本题「暴雨前 H/R 首轮可执行安排」看板；
+// 可切换到原有「封路重排」基线工作台（其 17 个测试与完整流程保持不变）。
+import { useEffect, useState } from 'react';
+import { RainWorkbench } from './components/rain/RainWorkbench';
+import { BaselineShell } from './components/BaselineShell';
 
-const SESSION_KEY = 'sw-session';
-const ROLE_NAME: Record<string, string> = { dispatcher: '调度员', driver: '司机', cs: '客服' };
+type View = 'rain' | 'baseline';
 
-function Shell() {
-  const { snap } = useWorld();
-  const [account, setAccount] = useState<Account | null>(() => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      return raw ? (JSON.parse(raw) as Account) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-    if (account) localStorage.setItem(SESSION_KEY, JSON.stringify(account));
-    else localStorage.removeItem(SESSION_KEY);
-  }, [account]);
-
-  if (!account) return <Login onLogin={setAccount} />;
-  if (!snap) return <div className="loading">正在从 IndexedDB 加载数据…</div>;
-
-  return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">🚛 环卫线路工作台</div>
-        <div className="clock">
-          <span className="mono clock-num">{fmtMin(snap.nowMin)}</span>
-          <button className="btn tiny" onClick={() => advanceClock(1, account.name)}>+1分</button>
-          <button className="btn tiny" onClick={() => advanceClock(5, account.name)}>+5分</button>
-          <button className="btn tiny" onClick={() => advanceClock(10, account.name)}>+10分</button>
-        </div>
-        <div className="who">
-          <span className="tag">{ROLE_NAME[account.role]}</span>
-          <b>{account.name}</b>
-          {account.vehicleId && <span className="mono">（{account.vehicleId}）</span>}
-          <button className="btn tiny ghost" onClick={() => setAccount(null)}>退出</button>
-        </div>
-      </header>
-      <main>
-        {account.role === 'dispatcher' && <DispatcherView snap={snap} account={account} />}
-        {account.role === 'driver' && <DriverView snap={snap} account={account} />}
-        {account.role === 'cs' && <CsView snap={snap} account={account} />}
-      </main>
-    </div>
-  );
+function initialView(): View {
+  try {
+    if (window.location.hash === '#baseline') return 'baseline';
+  } catch {
+    /* ignore */
+  }
+  return 'rain';
 }
 
-export default Shell;
+export default function App() {
+  const [view, setView] = useState<View>(initialView);
+
+  useEffect(() => {
+    const onHash = () => setView(window.location.hash === '#baseline' ? 'baseline' : 'rain');
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  if (view === 'baseline') {
+    return (
+      <BaselineShell
+        onBack={() => {
+          window.location.hash = '';
+          setView('rain');
+        }}
+      />
+    );
+  }
+  return <RainWorkbench onOpenBaseline={() => {
+    window.location.hash = 'baseline';
+    setView('baseline');
+  }} />;
+}
